@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16202e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Scratch Map">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<title>Scratch Map</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600&display=swap">
+<style>
+/* Layout: one-screen phone app. Header counters, full-bleed map or flag grid, bottom tab bar, slide-up sheet for a place. */
+:root {
+  --bg: #eceef2;
+  --surface: #ffffff;
+  --ink: #16202e;
+  --muted: #647085;
+  --line: #d5d9e1;
+  --foil: #c4c9d2;
+  --foil-edge: #aab1bd;
+  --accent: #16202e;
+  --accent-ink: #ffffff;
+  --sea: #e4e8ee;
+  --c-africa: #e58a1f;
+  --c-asia: #dc4b6b;
+  --c-europe: #4a7de0;
+  --c-namerica: #2fae78;
+  --c-samerica: #a95bd6;
+  --c-oceania: #1fb3c4;
+  --font-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --font-body: "Figtree", system-ui, -apple-system, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141c; --surface: #1a212c; --ink: #eef1f6; --muted: #98a3b5; --line: #2c3543;
+    --foil: #4a525f; --foil-edge: #5d6675; --accent: #eef1f6; --accent-ink: #0f141c; --sea: #131a24;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141c; --surface: #1a212c; --ink: #eef1f6; --muted: #98a3b5; --line: #2c3543;
+  --foil: #4a525f; --foil-edge: #5d6675; --accent: #eef1f6; --accent-ink: #0f141c; --sea: #131a24;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+img { max-width: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; overflow: hidden; -webkit-tap-highlight-color: transparent; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--c-europe); outline-offset: 2px; }
+
+#app { height: 100%; box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); display: flex; flex-direction: column; max-width: 720px; margin: 0 auto; }
+header { padding: 12px 16px 10px; display: flex; flex-direction: column; gap: 8px; }
+.title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+h1 { font-family: var(--font-display); font-weight: 800; font-size: 22px; letter-spacing: -0.02em; margin: 0; }
+.sync { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 5px 11px; min-width: 0; }
+.sync i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.sync[data-k="ok"] i { background: var(--c-namerica); }
+.sync[data-k="busy"] i { background: var(--c-africa); }
+.sync[data-k="bad"] i { background: var(--c-asia); }
+.counters { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; }
+.counter { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; min-width: 0; }
+.counter .n { font-family: var(--font-display); font-weight: 800; font-size: 22px; line-height: 1; font-variant-numeric: tabular-nums; }
+.counter .n small { font-size: 13px; color: var(--muted); font-weight: 600; }
+.counter .l { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar { height: 4px; border-radius: 4px; background: var(--line); margin-top: 6px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--c-namerica); width: 0; transition: width .5s; }
+
+main { flex: 1; min-height: 0; position: relative; }
+.view { position: absolute; inset: 0; }
+
+/* Map */
+#mapview { background: var(--sea); }
+#map { width: 100%; height: 100%; display: block; touch-action: none; }
+.shape { stroke: var(--bg); stroke-width: 0.6; vector-effect: non-scaling-stroke; fill: var(--foil); cursor: pointer; transition: fill .15s; }
+.shape.region { stroke-width: 0.5; }
+.shape.sel { stroke: var(--ink); stroke-width: 1.6; }
+.crumbs { position: absolute; left: 12px; top: 12px; display: flex; gap: 6px; align-items: center; z-index: 2; }
+.crumbs button { background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; font-weight: 600; font-size: 13px; box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+.legend { position: absolute; left: 12px; bottom: 12px; right: 12px; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--muted); pointer-events: none; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.hint { position: absolute; right: 12px; top: 12px; font-size: 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; pointer-events: none; }
+
+/* Flags */
+#flagsview { overflow-y: auto; padding: 4px 16px 24px; }
+.search { position: sticky; top: 0; background: var(--bg); padding: 4px 0 10px; z-index: 2; }
+.search input { width: 100%; box-sizing: border-box; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 10px 14px; }
+.flaggrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 14px 8px; }
+.flag { background: none; border: 0; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; }
+.flag .disc { width: 56px; height: 56px; border-radius: 50%; overflow: hidden; border: 3px solid transparent; box-sizing: border-box; background: var(--foil); }
+.flag img { width: 100%; height: 100%; object-fit: cover; display: block; filter: grayscale(1) brightness(.95); opacity: .45; transition: filter .4s, opacity .4s; }
+.flag.on .disc { border-color: var(--ring); }
+.flag.on img { filter: none; opacity: 1; }
+.flag .nm { font-size: 10.5px; line-height: 1.15; text-align: center; color: var(--muted); max-width: 100%; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.flag.on .nm { color: var(--ink); font-weight: 600; }
+.divider { grid-column: 1 / -1; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding-top: 6px; }
+
+/* Sheet data view */
+#dataview { overflow: auto; padding: 4px 16px 24px; }
+#dataview p { color: var(--muted); font-size: 13px; margin: 4px 0 12px; }
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+
+nav { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); }
+nav button { border: 0; background: none; padding: 12px 0 11px; font-weight: 600; font-size: 13px; color: var(--muted); }
+nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 var(--ink); }
+
+/* Sheet */
+.backdrop { position: fixed; inset: 0; background: rgba(8,12,18,.45); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 10; }
+.backdrop.open { opacity: 1; pointer-events: auto; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; margin: 0 auto; max-width: 720px; max-height: 82%; background: var(--surface); border-radius: 20px 20px 0 0; transform: translateY(105%); transition: transform .25s; z-index: 11; display: flex; flex-direction: column; box-shadow: 0 -8px 30px rgba(0,0,0,.25); }
+.sheet.open { transform: none; }
+.sheet .grab { width: 40px; height: 4px; border-radius: 4px; background: var(--line); margin: 8px auto 0; }
+.sheet-body { overflow-y: auto; padding: 12px 16px calc(20px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 14px; }
+.place { display: flex; align-items: center; gap: 12px; }
+.place .disc { width: 52px; height: 52px; border-radius: 50%; overflow: hidden; flex: none; background: var(--foil); }
+.place .disc img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.place h2 { font-family: var(--font-display); font-size: 22px; font-weight: 800; margin: 0; letter-spacing: -0.01em; }
+.place .sub { color: var(--muted); font-size: 13px; }
+.primary { width: 100%; border: 0; border-radius: 14px; padding: 14px; font-weight: 600; font-size: 16px; background: var(--accent); color: var(--accent-ink); }
+.primary.done { background: var(--ring); color: #fff; }
+.secondary { width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: 14px; padding: 12px; font-weight: 600; }
+.row { display: flex; gap: 8px; align-items: center; }
+.row > * { min-width: 0; }
+.field { flex: 1; border: 1px solid var(--line); background: var(--bg); border-radius: 12px; padding: 10px 12px; }
+.lbl { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.cities { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; }
+.cities li { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.cities li:last-child { border-bottom: 0; }
+.cities .cn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cities .tag { font-size: 12px; color: var(--muted); }
+.cities input[type="month"] { border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 4px 6px; font-size: 12px; width: 128px; }
+.x { border: 0; background: none; color: var(--muted); font-size: 20px; line-height: 1; padding: 4px 8px; }
+.note { font-size: 12.5px; color: var(--muted); }
+.add { border: 0; background: var(--accent); color: var(--accent-ink); border-radius: 12px; padding: 0 16px; font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) { .sheet, .backdrop, .flag img, .bar i { transition: none; } }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header>
+    <div class="title-row">
+      <h1>Scratch Map</h1>
+      <button class="sync" id="sync" type="button" data-k="busy"><i></i><span id="syncText">Loading</span></button>
+    </div>
+    <div class="counters">
+      <div class="counter"><div class="n" id="cCountries">0<small>/0</small></div><div class="l" id="cCountriesL">Countries</div><div class="bar"><i id="cBar"></i></div></div>
+      <div class="counter"><div class="n" id="cStates">0<small>/51</small></div><div class="l">US states</div></div>
+      <div class="counter"><div class="n" id="cProv">0<small>/13</small></div><div class="l">Provinces</div></div>
+    </div>
+  </header>
+
+  <main>
+    <section class="view" id="mapview" aria-label="Map">
+      <div class="crumbs" id="crumbs" hidden><button type="button" id="backBtn">‹ World</button></div>
+      <svg id="map" role="img" aria-label="Scratch-off world map"></svg>
+      <div class="hint" id="hint">Pinch and drag to zoom. Tap a place.</div>
+      <div class="legend" id="legend"></div>
+    </section>
+    <section class="view" id="flagsview" aria-label="Flags" hidden>
+      <div class="search"><input id="q" type="search" placeholder="Search countries" autocomplete="off"></div>
+      <div class="flaggrid" id="flaggrid"></div>
+    </section>
+    <section class="view" id="dataview" aria-label="Sheet rows" hidden>
+      <p>These are the rows in your Google Sheet tab named <b>Visited</b>. Edits made in the Sheet show up here the next time you open the app.</p>
+      <p id="unknownNote" hidden></p>
+      <div class="tablewrap"><table><thead><tr><th>Type</th><th>Country</th><th>State/Province</th><th>City</th><th>Trip Date</th><th>Notes</th></tr></thead><tbody id="rows"></tbody></table></div>
+    </section>
+  </main>
+
+  <nav role="tablist" aria-label="Views">
+    <button type="button" role="tab" data-tab="mapview" aria-selected="true">Map</button>
+    <button type="button" role="tab" data-tab="flagsview" aria-selected="false">Flags</button>
+    <button type="button" role="tab" data-tab="dataview" aria-selected="false">Sheet</button>
+  </nav>
+</div>
+
+<div class="backdrop" id="backdrop"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Place details"><div class="grab"></div><div class="sheet-body" id="sheetBody"></div></div>
+
+<script src="config.js"></script>
+<script src="d3.min.js"></script>
+<script src="topojson-client.min.js"></script>
+<script>
+(function () {
+  var CONT_COLOR = { 'Africa': 'var(--c-africa)', 'Asia': 'var(--c-asia)', 'Europe': 'var(--c-europe)', 'North America': 'var(--c-namerica)', 'South America': 'var(--c-samerica)', 'Oceania': 'var(--c-oceania)' };
+  var KEY = 'scratchmap-v1';
+  var SUBDIV = { US: { file: 'data/us.json', obj: 'states', label: 'states', total: 51, name: 'United States' }, CA: { file: 'data/canada.json', obj: 'provinces', label: 'provinces', total: 13, name: 'Canada' } };
+
+  /* ---------- data layer: phone cache + Google Sheet ---------- */
+  var SCRIPT_URL = String(window.SCRATCHMAP_URL || '').trim();
+  var state = { countries: {}, regions: {}, cities: [], unknown: [] };
+  var sync = { loaded: false, dirty: false, inflight: false, ver: 0, timer: null };
+  var idc = Date.now();
+  function nextId() { return ++idc; }
+
+  function setStatus(kind, text) {
+    var b = document.getElementById('sync'); if (!b) return;
+    b.dataset.k = kind; document.getElementById('syncText').textContent = text;
+  }
+  function persist() { try { localStorage.setItem(KEY, JSON.stringify({ state: state, dirty: sync.dirty })); } catch (e) {} }
+  function loadCache() {
+    try {
+      var s = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (s && s.state) { state = s.state; state.unknown = state.unknown || []; sync.dirty = !!s.dirty; }
+    } catch (e) {}
+  }
+  function save() {
+    sync.dirty = true; sync.ver++; persist();
+    if (!SCRIPT_URL) return;
+    setStatus('busy', 'Saving');
+    clearTimeout(sync.timer); sync.timer = setTimeout(push, 700);
+  }
+
+  function normName(s) { return String(s || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim(); }
+  var nameIndex = {}, regionIndex = { US: {}, CA: {} };
+  var ALIASES = { 'usa': 'US', 'us': 'US', 'united states of america': 'US', 'america': 'US', 'uk': 'GB', 'great britain': 'GB', 'england': 'GB', 'scotland': 'GB', 'wales': 'GB', 'northern ireland': 'GB', 'czech republic': 'CZ', 'ivory coast': 'CI', 'south korea': 'KR', 'north korea': 'KP', 'russia': 'RU', 'burma': 'MM', 'swaziland': 'SZ', 'vatican city': 'VA', 'holland': 'NL', 'the netherlands': 'NL', 'uae': 'AE', 'macau': 'MO', 'turkiye': 'TR' };
+  var REGION_ALIASES = { 'washington dc': 'District of Columbia', 'washington d c': 'District of Columbia', 'dc': 'District of Columbia', 'yukon': 'Yukon Territory', 'newfoundland': 'Newfoundland and Labrador', 'pei': 'Prince Edward Island', 'quebec': 'Quebec' };
+  function buildIndexes() {
+    nameIndex = {};
+    countries.forEach(function (c) { nameIndex[normName(c.name)] = c.a2; });
+    Object.keys(ALIASES).forEach(function (k) { if (byA2[ALIASES[k]] && !nameIndex[k]) nameIndex[k] = ALIASES[k]; });
+    ['US', 'CA'].forEach(function (a2) {
+      regionIndex[a2] = {};
+      subFeatures(a2).forEach(function (f) { regionIndex[a2][normName(f.id)] = f.id; });
+    });
+  }
+  function canonRegion(a2, name) {
+    var n = normName(name);
+    if (!regionIndex[a2]) return name ? String(name).trim() : '';
+    if (regionIndex[a2][n]) return regionIndex[a2][n];
+    var al = REGION_ALIASES[n];
+    if (al && regionIndex[a2][normName(al)]) return regionIndex[a2][normName(al)];
+    return '';
+  }
+
+  function rowsToState(rows) {
+    var st = { countries: {}, regions: {}, cities: [], unknown: [] };
+    rows.forEach(function (r) {
+      r = [r[0] || '', r[1] || '', r[2] || '', r[3] || '', r[4] || '', r[5] || ''];
+      var type = normName(r[0]), a2 = nameIndex[normName(r[1])];
+      if (!a2) { st.unknown.push(r); return; }
+      if (!type) type = r[3] ? 'city' : (r[2] ? 'state' : 'country');
+      var rec = { date: r[4], notes: r[5] };
+      if (type === 'country') { st.countries[a2] = rec; }
+      else if (type === 'state' || type === 'province' || type === 'region') {
+        var rn = canonRegion(a2, r[2]);
+        if (!rn) { st.unknown.push(r); return; }
+        st.regions[a2 + '|' + rn] = rec;
+      } else if (type === 'city') {
+        if (!r[3]) { st.unknown.push(r); return; }
+        var rg = r[2] ? (canonRegion(a2, r[2]) || r[2]) : '';
+        st.cities.push({ id: nextId(), country: a2, region: rg, name: r[3], date: r[4], notes: r[5] });
+      } else { st.unknown.push(r); }
+    });
+    return st;
+  }
+  function stateToRows() {
+    var rows = [];
+    Object.keys(state.countries).filter(function (a2) { return byA2[a2]; }).sort(function (x, y) { return byA2[x].name.localeCompare(byA2[y].name); })
+      .forEach(function (a2) { var r = state.countries[a2]; rows.push(['Country', byA2[a2].name, '', '', r.date || '', r.notes || '']); });
+    Object.keys(state.regions).forEach(function (k) {
+      var p = k.split('|'), r = state.regions[k]; if (!byA2[p[0]]) return;
+      rows.push([p[0] === 'CA' ? 'Province' : 'State', byA2[p[0]].name, p[1], '', r.date || '', r.notes || '']);
+    });
+    state.cities.forEach(function (c) { if (byA2[c.country]) rows.push(['City', byA2[c.country].name, c.region || '', c.name, c.date || '', c.notes || '']); });
+    (state.unknown || []).forEach(function (r) { rows.push(r); });
+    return rows;
+  }
+
+  function pull() {
+    return fetch(SCRIPT_URL, { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j || !j.ok) throw new Error((j && j.error) || 'bad reply');
+      return j.rows;
+    });
+  }
+  function push() {
+    if (!SCRIPT_URL) return;
+    if (!sync.loaded) { initialSync(); return; }
+    if (sync.inflight) return;
+    var v = sync.ver; sync.inflight = true; setStatus('busy', 'Saving');
+    fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ rows: stateToRows(), allowEmpty: true }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        sync.inflight = false;
+        if (!j || !j.ok) throw new Error((j && j.error) || 'save refused');
+        if (sync.ver === v) { sync.dirty = false; persist(); setStatus('ok', 'Synced'); } else { push(); }
+      })
+      .catch(function () { sync.inflight = false; setStatus('bad', 'Offline, saved on phone'); });
+  }
+  function renderAll() { paint(); updateCounters(); refreshFlags(); renderRows(); }
+  function initialSync() {
+    if (!SCRIPT_URL) { setStatus('', 'Not connected to a Sheet'); return; }
+    setStatus('busy', 'Loading');
+    pull().then(function (rows) {
+      sync.loaded = true;
+      if (sync.dirty) { push(); return; }
+      state = rowsToState(rows); persist(); renderAll(); setStatus('ok', 'Synced');
+    }).catch(function () { setStatus('bad', 'Offline, using phone copy'); });
+  }
+  function refreshFromSheet() {
+    if (!SCRIPT_URL || !sync.loaded || sync.dirty || sync.inflight || ctx) return;
+    pull().then(function (rows) {
+      if (sync.dirty || sync.inflight || ctx) return;
+      if (JSON.stringify(rows) === JSON.stringify(stateToRows())) { setStatus('ok', 'Synced'); return; }
+      state = rowsToState(rows); persist(); renderAll(); setStatus('ok', 'Synced');
+    }).catch(function () {});
+  }
+
+  /* ---------- helpers ---------- */
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  var countries = [], byA2 = {};
+  function flagUrl(a2) { return 'flags/' + a2.toLowerCase() + '.svg'; }
+  function countryVisited(a2) {
+    if (state.countries[a2]) return true;
+    for (var k in state.regions) if (k.split('|')[0] === a2) return true;
+    return state.cities.some(function (c) { return c.country === a2; });
+  }
+  function regionVisited(a2, r) {
+    if (state.regions[a2 + '|' + r]) return true;
+    return state.cities.some(function (c) { return c.country === a2 && c.region === r; });
+  }
+  function regionCount(a2) {
+    var set = {};
+    for (var k in state.regions) if (k.split('|')[0] === a2) set[k.split('|')[1]] = 1;
+    state.cities.forEach(function (c) { if (c.country === a2 && c.region) set[c.region] = 1; });
+    return Object.keys(set).length;
+  }
+  function ring(a2) { return CONT_COLOR[byA2[a2].continent]; }
+
+  /* ---------- counters ---------- */
+  function updateCounters() {
+    var n = countries.filter(function (c) { return countryVisited(c.a2); }).length;
+    document.getElementById('cCountries').innerHTML = n + '<small>/' + countries.length + '</small>';
+    var pct = countries.length ? Math.round(n / countries.length * 100) : 0;
+    document.getElementById('cCountriesL').textContent = 'Countries · ' + pct + '%';
+    document.getElementById('cBar').style.width = pct + '%';
+    document.getElementById('cStates').innerHTML = regionCount('US') + '<small>/51</small>';
+    document.getElementById('cProv').innerHTML = regionCount('CA') + '<small>/13</small>';
+  }
+
+  /* ---------- map ---------- */
+  var svg = d3.select('#map');
+  var world, mapMode = 'world', subCache = {}, currentSub = null, zoomB, gRoot, selected = null;
+  var W = 400, H = 500;
+
+  function sizeMap() { var r = document.getElementById('mapview').getBoundingClientRect(); W = r.width || 400; H = r.height || 500; svg.attr('viewBox', '0 0 ' + W + ' ' + H); }
+
+  function paint() {
+    svg.selectAll('path.shape').each(function () {
+      var kind = this.dataset.kind, a2 = this.dataset.a2, id = this.dataset.id, f = null;
+      if (kind === 'world') { f = SUBDIV[id] ? null : (countryVisited(id) ? ring(id) : null); }
+      else { f = regionVisited(a2, id) ? ring(a2) : null; }
+      this.style.fill = f || '';
+    });
+  }
+  function drawMap(layers, projection) {
+    svg.selectAll('*').remove();
+    var path = d3.geoPath(projection);
+    gRoot = svg.append('g');
+    layers.forEach(function (L) {
+      gRoot.append('g').selectAll('path').data(L.features).join('path')
+        .attr('class', 'shape' + (L.cls ? ' ' + L.cls : ''))
+        .attr('d', path)
+        .attr('data-kind', L.kind).attr('data-a2', L.a2 || '').attr('data-id', function (d) { return d.id; })
+        .on('click', function (ev, d) { openPlace(L.kind, d.id, this, L.a2); });
+    });
+    var zoom = d3.zoom().scaleExtent([1, 40]).translateExtent([[-W * 0.2, -H * 0.2], [W * 1.2, H * 1.2]])
+      .on('zoom', function (ev) { gRoot.attr('transform', ev.transform); });
+    svg.call(zoom).call(zoom.transform, d3.zoomIdentity);
+    zoomB = zoom;
+    paint();
+  }
+  function subFeatures(a2) { var cfg = SUBDIV[a2], t = subCache[a2]; return topojson.feature(t, t.objects[cfg.obj]).features; }
+  function showWorld() {
+    mapMode = 'world'; currentSub = null; sizeMap();
+    var feats = topojson.feature(world, world.objects.countries).features;
+    var proj = d3.geoNaturalEarth1().fitExtent([[6, 40], [W - 6, H - 44]], { type: 'FeatureCollection', features: feats });
+    var layers = [{ features: feats, kind: 'world' }];
+    ['US', 'CA'].forEach(function (a2) { if (subCache[a2]) layers.push({ features: subFeatures(a2), kind: 'sub', a2: a2, cls: 'region' }); });
+    drawMap(layers, proj);
+    document.getElementById('crumbs').hidden = true;
+    document.getElementById('hint').hidden = false;
+  }
+  function showSub(a2) {
+    var cfg = SUBDIV[a2];
+    mapMode = 'sub'; currentSub = a2; sizeMap();
+    var feats = subFeatures(a2);
+    var fc = { type: 'FeatureCollection', features: feats };
+    var proj = a2 === 'US' ? d3.geoAlbersUsa() : d3.geoConicConformal().parallels([49, 77]).rotate([96, 0]).center([0, 62]);
+    proj.fitExtent([[10, 56], [W - 10, H - 50]], fc);
+    drawMap([{ features: feats, kind: 'sub', a2: a2 }], proj);
+    document.getElementById('crumbs').hidden = false;
+    document.getElementById('backBtn').textContent = '\u2039 World';
+    document.getElementById('hint').hidden = true;
+  }
+  document.getElementById('backBtn').onclick = function () { showWorld(); };
+
+  /* ---------- scratch animation ---------- */
+  function scratch(node, color) {
+    try {
+      var d3n = d3.select(node), bb = node.getBBox(), pathD = node.getAttribute('d');
+      var parent = d3.select(node.parentNode);
+      var id = 'clip' + Math.floor(Math.random() * 1e9);
+      var defs = parent.append('clipPath').attr('id', id);
+      defs.append('path').attr('d', pathD);
+      var g = parent.append('g').attr('clip-path', 'url(#' + id + ')').style('pointer-events', 'none');
+      var step = Math.max(bb.width, bb.height) / 9; step = Math.max(step, 0.6);
+      var n = Math.ceil((bb.width + bb.height) / step) + 2, total = 700;
+      for (var k = 0; k < n; k++) {
+        var x0 = bb.x - bb.height + k * step, flip = k % 2;
+        var x1 = x0 + bb.height, y0 = bb.y + bb.height, y1 = bb.y;
+        var ln = g.append('line').attr('x1', flip ? x1 : x0).attr('y1', flip ? y1 : y0).attr('x2', flip ? x0 : x1).attr('y2', flip ? y0 : y1)
+          .attr('stroke', color).attr('stroke-width', step * 1.7).attr('stroke-linecap', 'round');
+        var len = bb.height * 1.5 + 2;
+        ln.attr('stroke-dasharray', len).attr('stroke-dashoffset', len)
+          .transition().delay(k * (total / n)).duration(240).ease(d3.easeCubicOut).attr('stroke-dashoffset', 0);
+      }
+      setTimeout(function () { g.remove(); defs.remove(); paint(); }, total + 320);
+    } catch (e) { paint(); }
+  }
+
+  /* ---------- sheet ---------- */
+  var sheet = document.getElementById('sheet'), backdrop = document.getElementById('backdrop'), body = document.getElementById('sheetBody');
+  var ctx = null; // {kind:'country'|'region', a2, region, node}
+  function closeSheet() { sheet.classList.remove('open'); backdrop.classList.remove('open'); if (selected) { selected.classList.remove('sel'); selected = null; } ctx = null; }
+  backdrop.onclick = closeSheet;
+
+  function openPlace(kind, id, node, a2) {
+    if (kind === 'world') ctx = { kind: 'country', a2: id, node: node };
+    else ctx = { kind: 'region', a2: a2, region: id, node: node };
+    if (selected) selected.classList.remove('sel');
+    if (node) { selected = node; node.classList.add('sel'); }
+    renderSheet();
+    sheet.classList.add('open'); backdrop.classList.add('open');
+  }
+  function openCountryFromFlag(a2) { ctx = { kind: 'country', a2: a2, node: null }; renderSheet(); sheet.classList.add('open'); backdrop.classList.add('open'); }
+
+  function renderSheet() {
+    var c = byA2[ctx.a2], isRegion = ctx.kind === 'region';
+    var visited = isRegion ? regionVisited(ctx.a2, ctx.region) : countryVisited(ctx.a2);
+    var explicit = isRegion ? state.regions[ctx.a2 + '|' + ctx.region] : state.countries[ctx.a2];
+    var implied = visited && !explicit;
+    var title = isRegion ? ctx.region : c.name;
+    var sub = isRegion ? c.name : c.continent;
+    var rec = explicit || {};
+    var cities = state.cities.filter(function (x) { return x.country === ctx.a2 && (isRegion ? x.region === ctx.region : true); });
+    var h = '';
+    h += '<div class="place"><div class="disc"><img alt="" src="' + flagUrl(ctx.a2) + '"></div><div style="min-width:0"><h2>' + esc(title) + '</h2><div class="sub">' + esc(sub) + '</div></div></div>';
+    h += '<button type="button" class="primary' + (visited ? ' done' : '') + '" id="scratchBtn" style="--ring:' + ring(ctx.a2) + '"' + (implied ? ' disabled' : '') + '>' + (visited ? '✓ Scratched off' + (explicit ? ' (tap to undo)' : '') : 'Scratch off') + '</button>';
+    if (implied) h += '<div class="note">Counted because of the cities you added below.</div>';
+    if (visited) h += '<div class="row"><span class="lbl" style="width:70px">Trip date</span><input class="field" type="month" id="tripDate" value="' + esc(rec.date || '') + '"' + (implied ? ' disabled' : '') + '></div>';
+    if (!isRegion && SUBDIV[ctx.a2]) {
+      var cfg = SUBDIV[ctx.a2];
+      h += '<button type="button" class="secondary" id="subBtn">Open ' + cfg.label + ' map · ' + regionCount(ctx.a2) + ' of ' + cfg.total + '</button>';
+    }
+    if (isRegion && mapMode === 'world') h += '<button type="button" class="secondary" id="zoomBtn">Zoom to ' + esc(c.name) + ' ' + SUBDIV[ctx.a2].label + ' map</button>';
+    h += '<div><div class="lbl" style="margin-bottom:6px">Cities · ' + cities.length + '</div><ul class="cities">';
+    cities.forEach(function (x) {
+      h += '<li data-id="' + x.id + '"><span class="cn">' + esc(x.name) + (!isRegion && x.region ? ' <span class="tag">' + esc(x.region) + '</span>' : '') + '</span><input type="month" data-date="' + x.id + '" value="' + esc(x.date || '') + '" aria-label="Trip date for ' + esc(x.name) + '"><button type="button" class="x" data-del="' + x.id + '" aria-label="Remove ' + esc(x.name) + '">×</button></li>';
+    });
+    h += '</ul><form class="row" id="cityForm" style="margin-top:10px"><input class="field" id="cityInput" placeholder="Add a city" autocomplete="off"><button class="add" type="submit">Add</button></form></div>';
+    body.innerHTML = h;
+
+    var sb = document.getElementById('scratchBtn');
+    sb.onclick = function () {
+      var key = isRegion ? ctx.a2 + '|' + ctx.region : ctx.a2, store = isRegion ? state.regions : state.countries;
+      if (store[key]) { delete store[key]; save(); paint(); updateCounters(); renderSheet(); refreshFlags(); return; }
+      store[key] = { date: '' }; save();
+      updateCounters(); renderSheet(); refreshFlags();
+      if (ctx.node && document.getElementById('mapview').hidden === false && !(ctx.kind === 'country' && SUBDIV[ctx.a2])) scratch(ctx.node, ring(ctx.a2)); else paint();
+    };
+    var td = document.getElementById('tripDate');
+    if (td) td.onchange = function () { explicit.date = td.value; save(); renderRows(); };
+    var zb = document.getElementById('zoomBtn');
+    if (zb) zb.onclick = function () { var a = ctx.a2; closeSheet(); showSub(a); };
+    var sub = document.getElementById('subBtn');
+    if (sub) sub.onclick = function () { var a = ctx.a2; closeSheet(); switchTab('mapview'); showSub(a); };
+    body.querySelectorAll('[data-del]').forEach(function (b) {
+      b.onclick = function () { var id = +b.dataset.del; state.cities = state.cities.filter(function (x) { return x.id !== id; }); save(); paint(); updateCounters(); renderSheet(); refreshFlags(); };
+    });
+    body.querySelectorAll('[data-date]').forEach(function (i) {
+      i.onchange = function () { var id = +i.dataset.date; state.cities.forEach(function (x) { if (x.id === id) x.date = i.value; }); save(); renderRows(); };
+    });
+    document.getElementById('cityForm').onsubmit = function (e) {
+      e.preventDefault();
+      var v = document.getElementById('cityInput').value.trim(); if (!v) return;
+      var wasVisited = visited;
+      state.cities.push({ id: nextId(), country: ctx.a2, region: isRegion ? ctx.region : '', name: v, date: '' });
+      save(); updateCounters(); renderSheet(); refreshFlags();
+      if (!wasVisited && ctx.node && document.getElementById('mapview').hidden === false && !(ctx.kind === 'country' && SUBDIV[ctx.a2])) scratch(ctx.node, ring(ctx.a2)); else paint();
+    };
+  }
+
+  /* ---------- flags ---------- */
+  function refreshFlags() {
+    var q = document.getElementById('q').value.trim().toLowerCase();
+    var list = countries.filter(function (c) { return !q || c.name.toLowerCase().indexOf(q) > -1; });
+    var on = list.filter(function (c) { return countryVisited(c.a2); }), off = list.filter(function (c) { return !countryVisited(c.a2); });
+    var h = '';
+    function item(c, isOn) { return '<button type="button" class="flag' + (isOn ? ' on' : '') + '" data-a2="' + c.a2 + '" style="--ring:' + ring(c.a2) + '"><span class="disc"><img loading="lazy" alt="" src="' + flagUrl(c.a2) + '"></span><span class="nm">' + esc(c.name) + '</span></button>'; }
+    if (on.length) h += '<div class="divider">Visited · ' + on.length + '</div>' + on.map(function (c) { return item(c, true); }).join('');
+    if (off.length) h += '<div class="divider">Still to scratch · ' + off.length + '</div>' + off.map(function (c) { return item(c, false); }).join('');
+    if (!list.length) h = '<div class="note">No match.</div>';
+    document.getElementById('flaggrid').innerHTML = h;
+  }
+  document.getElementById('flaggrid').addEventListener('click', function (e) { var b = e.target.closest('.flag'); if (b) openCountryFromFlag(b.dataset.a2); });
+  document.getElementById('q').addEventListener('input', refreshFlags);
+
+  /* ---------- sheet rows preview ---------- */
+  function renderRows() {
+    var rows = stateToRows();
+    document.getElementById('rows').innerHTML = rows.map(function (r) { return '<tr>' + r.map(function (x) { return '<td>' + esc(x) + '</td>'; }).join('') + '</tr>'; }).join('') || '<tr><td colspan="6">Nothing yet.</td></tr>';
+    var u = state.unknown ? state.unknown.length : 0, n = document.getElementById('unknownNote');
+    n.hidden = !u;
+    n.textContent = u ? u + ' row' + (u === 1 ? '' : 's') + ' in your Sheet ' + (u === 1 ? "isn't" : "aren't") + ' recognized (check the spelling of the country or state). They are kept as they are and shown at the bottom.' : '';
+  }
+
+  /* ---------- tabs ---------- */
+  function switchTab(id) {
+    ['mapview', 'flagsview', 'dataview'].forEach(function (v) { document.getElementById(v).hidden = v !== id; });
+    document.querySelectorAll('nav button').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.tab === id ? 'true' : 'false'); });
+    if (id === 'flagsview') refreshFlags();
+    if (id === 'dataview') renderRows();
+    if (id === 'mapview') { if (mapMode === 'world') showWorld(); }
+  }
+  document.querySelectorAll('nav button').forEach(function (b) { b.onclick = function () { closeSheet(); switchTab(b.dataset.tab); }; });
+  document.getElementById('sync').onclick = function () { if (sync.loaded) { if (sync.dirty) push(); else refreshFromSheet(); } else initialSync(); };
+
+  /* ---------- legend ---------- */
+  document.getElementById('legend').innerHTML = Object.keys(CONT_COLOR).map(function (k) { return '<span><i style="background:' + CONT_COLOR[k] + '"></i>' + k + '</span>'; }).join('');
+
+  /* ---------- boot ---------- */
+  loadCache();
+  Promise.all([fetch('data/world.json').then(function (r) { return r.json(); }), fetch('data/countries.json').then(function (r) { return r.json(); }), fetch(SUBDIV.US.file).then(function (r) { return r.json(); }), fetch(SUBDIV.CA.file).then(function (r) { return r.json(); })]).then(function (res) {
+    world = res[0]; countries = res[1]; subCache.US = res[2]; subCache.CA = res[3]; countries.forEach(function (c) { byA2[c.a2] = c; });
+    buildIndexes();
+    updateCounters(); showWorld(); refreshFlags(); renderRows();
+    initialSync();
+    var rt; window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { if (mapMode === 'world') showWorld(); else showSub(currentSub); }, 150); });
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { if (sync.dirty) push(); else if (sync.loaded) refreshFromSheet(); else initialSync(); } });
+    window.addEventListener('online', function () { if (sync.dirty) push(); else if (!sync.loaded) initialSync(); });
+    setInterval(function () { if (sync.dirty && !sync.inflight) push(); else if (!sync.loaded) initialSync(); }, 20000);
+  }).catch(function (e) { document.getElementById('hint').textContent = 'Could not load map data.'; });
+  if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); }); }
+})();
+</script>
+
+</body>
+</html>
