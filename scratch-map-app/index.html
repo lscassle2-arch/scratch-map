@@ -144,6 +144,14 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
 .note { font-size: 12.5px; color: var(--muted); }
 .add { border: 0; background: var(--accent); color: var(--accent-ink); border-radius: 12px; padding: 0 16px; font-weight: 600; }
 
+.setup { position: fixed; inset: 0; z-index: 30; background: var(--bg); display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: calc(24px + env(safe-area-inset-top, 0px)) 16px 32px; }
+.setup-card { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 12px; }
+.setup-card h2 { font-family: var(--font-display); font-weight: 800; font-size: 26px; letter-spacing: -0.02em; margin: 0; }
+.setup-card p { margin: 0; color: var(--muted); }
+.ios { background: var(--surface); border: 1px solid var(--c-africa); border-radius: 12px; padding: 10px 12px; font-size: 13.5px; }
+.conn { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+#setupMsg { min-height: 1.3em; color: var(--ink); }
+
 @media (prefers-reduced-motion: reduce) { .sheet, .backdrop, .flag img, .bar i { transition: none; } }
 </style>
 </head>
@@ -177,6 +185,7 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
       <p>These are the rows in your Google Sheet tab named <b>Visited</b>. Edits made in the Sheet show up here the next time you open the app.</p>
       <p id="unknownNote" hidden></p>
       <div class="tablewrap"><table><thead><tr><th>Type</th><th>Country</th><th>State/Province</th><th>City</th><th>Trip Date</th><th>Notes</th></tr></thead><tbody id="rows"></tbody></table></div>
+      <div class="conn"><span class="lbl">Sheet connection</span><div id="connText" class="note"></div><div class="row"><button id="changeLink" class="secondary" type="button">Change link</button><button id="disconnect" class="secondary" type="button">Disconnect</button></div></div>
     </section>
   </main>
 
@@ -190,6 +199,19 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
 <div class="backdrop" id="backdrop"></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Place details"><div class="grab"></div><div class="sheet-body" id="sheetBody"></div></div>
 
+<div class="setup" id="setup" hidden role="dialog" aria-modal="true" aria-labelledby="setupTitle">
+  <div class="setup-card">
+    <h2 id="setupTitle">Connect your Google Sheet</h2>
+    <p>This app saves your places in your own Google Sheet, so only you can see them.</p>
+    <div class="ios" id="iosTip" hidden><b>iPhone tip:</b> add this app to your Home Screen first (tap the Share button, then Add to Home Screen). Then open it from the new icon and paste your link there. A link pasted in Safari does not carry over to the icon.</div>
+    <label for="urlInput" class="lbl">Your Sheet link</label>
+    <input id="urlInput" class="field" type="text" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <div id="setupMsg" class="note" role="status"></div>
+    <button id="connectBtn" class="primary" type="button">Connect</button>
+    <button id="skipBtn" class="secondary" type="button">Skip for now</button>
+    <p class="note">No link yet? Follow the setup guide you were sent. It has the steps to get one.</p>
+  </div>
+</div>
 <script src="config.js"></script>
 <script src="d3.min.js"></script>
 <script src="topojson-client.min.js"></script>
@@ -200,7 +222,10 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
   var SUBDIV = { US: { file: 'data/us.json', obj: 'states', label: 'states', total: 51, name: 'United States' }, CA: { file: 'data/canada.json', obj: 'provinces', label: 'provinces', total: 13, name: 'Canada' } };
 
   /* ---------- data layer: phone cache + Google Sheet ---------- */
-  var SCRIPT_URL = String(window.SCRATCHMAP_URL || '').trim();
+  var URL_KEY = 'scratchmap-url';
+  var SCRIPT_URL = '';
+  try { SCRIPT_URL = localStorage.getItem(URL_KEY) || ''; } catch (e) {}
+  if (!SCRIPT_URL) SCRIPT_URL = String(window.SCRATCHMAP_URL || '').trim();
   var state = { countries: {}, regions: {}, cities: [], unknown: [] };
   var sync = { loaded: false, dirty: false, inflight: false, ver: 0, timer: null };
   var idc = Date.now();
@@ -300,6 +325,53 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
       })
       .catch(function () { sync.inflight = false; setStatus('bad', 'Offline, saved on phone'); });
   }
+  /* ---------- connect screen ---------- */
+  function isIOS() { return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
+  function isInstalled() { return !!(navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)); }
+  function setupMsg(t) { document.getElementById('setupMsg').textContent = t; }
+  function showSetup() {
+    document.getElementById('urlInput').value = '';
+    setupMsg('');
+    document.getElementById('iosTip').hidden = !(isIOS() && !isInstalled());
+    document.getElementById('connectBtn').disabled = false;
+    document.getElementById('setup').hidden = false;
+  }
+  function hideSetup() { document.getElementById('setup').hidden = true; }
+  function updateConn() {
+    var t = document.getElementById('connText');
+    t.textContent = SCRIPT_URL ? 'Connected to your Google Sheet (link ends in ...' + SCRIPT_URL.slice(-10, -5) + ').' : 'Not connected. Your places are saved on this phone only.';
+    document.getElementById('disconnect').hidden = !SCRIPT_URL;
+    document.getElementById('changeLink').textContent = SCRIPT_URL ? 'Change link' : 'Connect a Sheet';
+  }
+  function connectUrl(raw) {
+    var u = String(raw || '').trim();
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(u)) {
+      setupMsg('That does not look like the right link. It should start with https://script.google.com/macros/s/ and end with /exec. Try copying it again.');
+      return;
+    }
+    setupMsg('Checking your link...');
+    document.getElementById('connectBtn').disabled = true;
+    fetch(u, { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j || !j.ok) throw new Error('not ok');
+      var prev = SCRIPT_URL;
+      SCRIPT_URL = u;
+      try { localStorage.setItem(URL_KEY, u); } catch (e) {}
+      if (prev && prev !== u) { state = { countries: {}, regions: {}, cities: [], unknown: [] }; sync.dirty = false; sync.loaded = false; persist(); renderAll(); }
+      hideSetup(); updateConn(); initialSync();
+    }).catch(function () {
+      document.getElementById('connectBtn').disabled = false;
+      setupMsg('I could not open that link. Check that you copied all of it, and that "Who has access" was set to Anyone when you deployed.');
+    });
+  }
+  document.getElementById('connectBtn').onclick = function () { connectUrl(document.getElementById('urlInput').value); };
+  document.getElementById('urlInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') connectUrl(this.value); });
+  document.getElementById('skipBtn').onclick = function () { hideSetup(); };
+  document.getElementById('changeLink').onclick = function () { showSetup(); };
+  document.getElementById('disconnect').onclick = function () {
+    try { localStorage.removeItem(URL_KEY); } catch (e) {}
+    SCRIPT_URL = ''; sync.loaded = false; updateConn(); setStatus('', 'Not connected to a Sheet');
+  };
+
   function renderAll() { paint(); updateCounters(); refreshFlags(); renderRows(); }
   function initialSync() {
     if (!SCRIPT_URL) { setStatus('', 'Not connected to a Sheet'); return; }
@@ -523,6 +595,7 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
   function renderRows() {
     var rows = stateToRows();
     document.getElementById('rows').innerHTML = rows.map(function (r) { return '<tr>' + r.map(function (x) { return '<td>' + esc(x) + '</td>'; }).join('') + '</tr>'; }).join('') || '<tr><td colspan="6">Nothing yet.</td></tr>';
+    updateConn();
     var u = state.unknown ? state.unknown.length : 0, n = document.getElementById('unknownNote');
     n.hidden = !u;
     n.textContent = u ? u + ' row' + (u === 1 ? '' : 's') + ' in your Sheet ' + (u === 1 ? "isn't" : "aren't") + ' recognized (check the spelling of the country or state). They are kept as they are and shown at the bottom.' : '';
@@ -537,7 +610,7 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
     if (id === 'mapview') { if (mapMode === 'world') showWorld(); }
   }
   document.querySelectorAll('nav button').forEach(function (b) { b.onclick = function () { closeSheet(); switchTab(b.dataset.tab); }; });
-  document.getElementById('sync').onclick = function () { if (sync.loaded) { if (sync.dirty) push(); else refreshFromSheet(); } else initialSync(); };
+  document.getElementById('sync').onclick = function () { if (!SCRIPT_URL) { showSetup(); return; } if (sync.loaded) { if (sync.dirty) push(); else refreshFromSheet(); } else initialSync(); };
 
   /* ---------- legend ---------- */
   document.getElementById('legend').innerHTML = Object.keys(CONT_COLOR).map(function (k) { return '<span><i style="background:' + CONT_COLOR[k] + '"></i>' + k + '</span>'; }).join('');
@@ -548,7 +621,7 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
     world = res[0]; countries = res[1]; subCache.US = res[2]; subCache.CA = res[3]; countries.forEach(function (c) { byA2[c.a2] = c; });
     buildIndexes();
     updateCounters(); showWorld(); refreshFlags(); renderRows();
-    initialSync();
+    if (!SCRIPT_URL) { showSetup(); setStatus('', 'Not connected to a Sheet'); } else { initialSync(); }
     var rt; window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { if (mapMode === 'world') showWorld(); else showSub(currentSub); }, 150); });
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { if (sync.dirty) push(); else if (sync.loaded) refreshFromSheet(); else initialSync(); } });
     window.addEventListener('online', function () { if (sync.dirty) push(); else if (!sync.loaded) initialSync(); });

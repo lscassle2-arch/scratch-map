@@ -1,5 +1,5 @@
 // Scratch Map service worker: lets the app open with no signal.
-var CACHE = 'scratchmap-v1';
+var CACHE = 'scratchmap-v3';
 var CORE = ['./', 'index.html', 'config.js', 'd3.min.js', 'topojson-client.min.js', 'manifest.webmanifest',
   'data/world.json', 'data/us.json', 'data/canada.json', 'data/countries.json', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 
