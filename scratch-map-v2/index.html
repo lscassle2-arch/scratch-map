@@ -229,13 +229,14 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
     <h2 id="setupTitle">Sign in</h2>
     <p id="authLead">Your places are saved to your own account, so only you can see them.</p>
     <div class="ios" id="iosTip" hidden><b>iPhone tip:</b> add this app to your Home Screen first (tap the Share button, then Add to Home Screen). Then open it from the new icon and sign in there. Signing in on Safari does not carry over to the icon.</div>
-    <label for="emailInput" class="lbl">Email</label>
+    <label for="emailInput" class="lbl" id="emailLbl">Email</label>
     <input id="emailInput" class="field" type="email" placeholder="you@example.com" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="email">
-    <label for="pwInput" class="lbl">Password</label>
+    <label for="pwInput" class="lbl" id="pwLbl">Password</label>
     <input id="pwInput" class="field" type="password" placeholder="At least 8 characters" autocomplete="current-password">
     <div id="authMsg" class="note" role="status"></div>
     <button id="authBtn" class="primary" type="submit">Sign in</button>
     <button id="modeBtn" class="secondary" type="button">New here? Create an account</button>
+    <button id="forgotBtn" class="linkbtn" type="button">Forgot your password?</button>
     <p class="note"><a href="privacy.html">Privacy policy</a></p>
   </form>
 </div>
@@ -252,10 +253,13 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
   /* ---------- data layer: phone cache + Supabase account ---------- */
   var CACHE_PREFIX = 'scratchmap2-cache-', LAST_KEY = 'scratchmap2-last';
   var COLS = 'id,type,country,state_province,city,trip_date,notes';
+  // A password-reset email link opens the app with this in the address. Read it before the library clears it.
+  var RECOVERY = /[#&?]type=recovery/.test(location.hash + location.search);
+  var LINK_ERROR = /[#&?]error_code=/.test(location.hash + location.search);
   var sb = null;
   try {
     sb = window.supabase.createClient(String(window.SCRATCHMAP_SUPABASE_URL || ''), String(window.SCRATCHMAP_SUPABASE_KEY || ''), {
-      auth: { storageKey: 'scratchmap2-auth', persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+      auth: { storageKey: 'scratchmap2-auth', persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
     });
   } catch (e) {}
   var user = null; // { id, email } once signed in
@@ -443,12 +447,22 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
   }
 
   /* ---------- sign in / account ---------- */
-  var authMode = 'in';
+  var authMode = 'in', recovering = RECOVERY;
   function isIOS() { return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
   function isInstalled() { return !!(navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)); }
   function authMsg(t) { document.getElementById('authMsg').textContent = t; }
   function applyMode() {
-    var up = authMode === 'up';
+    var up = authMode === 'up', rs = authMode === 'reset';
+    document.getElementById('emailLbl').hidden = rs; document.getElementById('emailInput').hidden = rs;
+    document.getElementById('modeBtn').hidden = rs; document.getElementById('forgotBtn').hidden = authMode !== 'in';
+    document.getElementById('pwLbl').textContent = rs ? 'New password' : 'Password';
+    if (rs) {
+      document.getElementById('setupTitle').textContent = 'Choose a new password';
+      document.getElementById('authLead').textContent = 'Type a new password for your account. Your places are not affected.';
+      document.getElementById('authBtn').textContent = 'Save new password';
+      document.getElementById('pwInput').setAttribute('autocomplete', 'new-password');
+      return;
+    }
     document.getElementById('setupTitle').textContent = up ? 'Create your account' : 'Sign in';
     document.getElementById('authLead').textContent = up ? 'Pick an email and a password. Your places are saved to your account and only you can see them.' : 'Your places are saved to your own account, so only you can see them.';
     document.getElementById('authBtn').textContent = up ? 'Create account' : 'Sign in';
@@ -482,7 +496,7 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
     renderAll();
   }
   function onSession(session) {
-    var u = session && session.user; if (!u) return;
+    var u = session && session.user; if (!u || recovering) return;
     if (user && user.id === u.id) { hideAuth(); if (!sync.loaded) initialSync(); return; } // same person again (token refresh etc.)
     user = { id: u.id, email: u.email || '' };
     try { localStorage.setItem(LAST_KEY, JSON.stringify(user)); } catch (e) {}
@@ -492,10 +506,32 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
   }
   function readLast() { try { var l = JSON.parse(localStorage.getItem(LAST_KEY) || 'null'); return l && l.id ? l : null; } catch (e) { return null; } }
 
+  document.getElementById('forgotBtn').onclick = function () {
+    var email = document.getElementById('emailInput').value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { authMsg('Type your email above first, then tap Forgot your password again.'); return; }
+    if (!sb) return;
+    authMsg('Sending...');
+    sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname.replace(/[^/]*$/, '') }).then(function (res) {
+      if (res.error) { authMsg(friendlyAuthError(res.error)); return; }
+      authMsg('If that email has an account, a reset link is on its way. Check your inbox and spam. Open the link, choose a new password, then come back here and sign in.');
+    }).catch(function (err) { authMsg(friendlyAuthError(err)); });
+  };
   document.getElementById('modeBtn').onclick = function () { authMode = authMode === 'in' ? 'up' : 'in'; authMsg(''); applyMode(); };
   document.getElementById('authForm').onsubmit = function (e) {
     e.preventDefault();
     var email = document.getElementById('emailInput').value.trim(), pw = document.getElementById('pwInput').value;
+    if (authMode === 'reset') {
+      if (pw.length < 8) { authMsg('Your password needs at least 8 characters.'); return; }
+      var rb = document.getElementById('authBtn'); rb.disabled = true; authMsg('Saving...');
+      sb.auth.updateUser({ password: pw }).then(function (res) {
+        rb.disabled = false;
+        if (res.error) { authMsg(friendlyAuthError(res.error)); return; }
+        recovering = false; authMode = 'in';
+        var done = function () { showAuth('Password updated. Sign in with your new password.'); };
+        sb.auth.signOut().then(done, done);
+      }).catch(function (err) { rb.disabled = false; authMsg(friendlyAuthError(err)); });
+      return;
+    }
     if (!sb) { authMsg('The app could not load. Close it and open it again.'); return; }
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { authMsg('That does not look like an email address.'); return; }
     if (pw.length < 8) { authMsg('Your password needs at least 8 characters.'); return; }
@@ -568,12 +604,16 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
     if (!sb) { showAuth('The app could not load its sign-in. Close it and open it again.'); return; }
     sb.auth.onAuthStateChange(function (event, session) {
       setTimeout(function () {
-        if (event === 'SIGNED_OUT') { if (user) { leave(); showAuth(''); } }
+        if (event === 'PASSWORD_RECOVERY') { recovering = true; authMode = 'reset'; showAuth(''); }
+        else if (event === 'SIGNED_OUT') { if (user) { leave(); showAuth(''); } }
         else if (session) onSession(session);
       }, 0);
     });
+    if (RECOVERY) { authMode = 'reset'; showAuth(''); }
+    else if (LINK_ERROR) { showAuth('That link has expired or was already used. Tap Forgot your password to get a new one.'); }
     sb.auth.getSession().then(function (r) {
       var s = r && r.data && r.data.session;
+      if (recovering || LINK_ERROR) return;
       if (s) { onSession(s); return; }
       var last = readLast();
       if (last && ((r && r.error) || !navigator.onLine)) {   // no signal: open the saved copy and try again later
