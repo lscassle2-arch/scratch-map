@@ -89,7 +89,7 @@ main { flex: 1; min-height: 0; position: relative; }
 .hint { position: absolute; right: 12px; top: 12px; font-size: 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; pointer-events: none; }
 
 /* Flags */
-#flagsview { overflow-y: auto; padding: 4px 16px 24px; }
+#flagsview, #statesview { overflow-y: auto; padding: 4px 16px 24px; }
 .search { position: sticky; top: 0; background: var(--bg); padding: 4px 0 10px; z-index: 2; }
 .search input { width: 100%; box-sizing: border-box; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 10px 14px; }
 .flaggrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 14px 8px; }
@@ -98,6 +98,7 @@ main { flex: 1; min-height: 0; position: relative; }
 .flag img { width: 100%; height: 100%; object-fit: cover; display: block; filter: grayscale(1) brightness(.95); opacity: .45; transition: filter .4s, opacity .4s; }
 .flag.on .disc { border-color: var(--ring); }
 .flag.on img { filter: none; opacity: 1; }
+.flag .disc img.rf, .place .disc img.rf { object-fit: contain; padding: 7px; box-sizing: border-box; }
 .flag .nm { font-size: 10.5px; line-height: 1.15; text-align: center; color: var(--muted); max-width: 100%; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .flag.on .nm { color: var(--ink); font-weight: 600; }
 .divider { grid-column: 1 / -1; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding-top: 6px; }
@@ -111,7 +112,7 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--lin
 th { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 tr:last-child td { border-bottom: 0; }
 
-nav { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); }
+nav { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); }
 nav button { border: 0; background: none; padding: 12px 0 11px; font-weight: 600; font-size: 13px; color: var(--muted); }
 nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 var(--ink); }
 
@@ -189,6 +190,10 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
       <div class="search"><input id="q" type="search" placeholder="Search countries" autocomplete="off"></div>
       <div class="flaggrid" id="flaggrid"></div>
     </section>
+    <section class="view" id="statesview" aria-label="States" hidden>
+      <div class="search"><input id="qs" type="search" placeholder="Search states and provinces" autocomplete="off"></div>
+      <div class="flaggrid" id="stategrid"></div>
+    </section>
     <section class="view" id="dataview" aria-label="My data" hidden>
       <p>These are all the places saved to your account. They are also kept on this phone, so the app still opens with no signal.</p>
       <p id="unknownNote" hidden></p>
@@ -217,6 +222,7 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
   <nav role="tablist" aria-label="Views">
     <button type="button" role="tab" data-tab="mapview" aria-selected="true">Map</button>
     <button type="button" role="tab" data-tab="flagsview" aria-selected="false">Countries</button>
+    <button type="button" role="tab" data-tab="statesview" aria-selected="false">States</button>
     <button type="button" role="tab" data-tab="dataview" aria-selected="false">My data</button>
   </nav>
 </div>
@@ -654,6 +660,9 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
     return Object.keys(set).length;
   }
   function ring(a2) { return CONT_COLOR[byA2[a2].continent]; }
+  // Flags for US states (+ DC) and Canadian provinces: flags/states/us-al.webp, ca-ab.webp, ...
+  var REGION_FLAG = {"US":{"Alabama":"al","Alaska":"ak","Arizona":"az","Arkansas":"ar","California":"ca","Colorado":"co","Connecticut":"ct","Delaware":"de","District of Columbia":"dc","Florida":"fl","Georgia":"ga","Hawaii":"hi","Idaho":"id","Illinois":"il","Indiana":"in","Iowa":"ia","Kansas":"ks","Kentucky":"ky","Louisiana":"la","Maine":"me","Maryland":"md","Massachusetts":"ma","Michigan":"mi","Minnesota":"mn","Mississippi":"ms","Missouri":"mo","Montana":"mt","Nebraska":"ne","Nevada":"nv","New Hampshire":"nh","New Jersey":"nj","New Mexico":"nm","New York":"ny","North Carolina":"nc","North Dakota":"nd","Ohio":"oh","Oklahoma":"ok","Oregon":"or","Pennsylvania":"pa","Rhode Island":"ri","South Carolina":"sc","South Dakota":"sd","Tennessee":"tn","Texas":"tx","Utah":"ut","Vermont":"vt","Virginia":"va","Washington":"wa","West Virginia":"wv","Wisconsin":"wi","Wyoming":"wy"},"CA":{"Alberta":"ab","British Columbia":"bc","Manitoba":"mb","New Brunswick":"nb","Newfoundland and Labrador":"nl","Northwest Territories":"nt","Nova Scotia":"ns","Nunavut":"nu","Ontario":"on","Prince Edward Island":"pe","Quebec":"qc","Saskatchewan":"sk","Yukon Territory":"yt"}};
+  function regionFlagUrl(a2, name) { var c = REGION_FLAG[a2] && REGION_FLAG[a2][name]; return c ? 'flags/states/' + a2.toLowerCase() + '-' + c + '.webp' : flagUrl(a2); }
 
   /* ---------- counters ---------- */
   function updateCounters() {
@@ -773,7 +782,7 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
     var rec = explicit || {};
     var cities = state.cities.filter(function (x) { return x.country === ctx.a2 && (isRegion ? x.region === ctx.region : true); });
     var h = '';
-    h += '<div class="place"><div class="disc"><img alt="" src="' + flagUrl(ctx.a2) + '"></div><div style="min-width:0"><h2>' + esc(title) + '</h2><div class="sub">' + esc(sub) + '</div></div></div>';
+    h += '<div class="place"><div class="disc"><img' + (isRegion ? ' class="rf"' : '') + ' alt="" src="' + (isRegion ? regionFlagUrl(ctx.a2, ctx.region) : flagUrl(ctx.a2)) + '"></div><div style="min-width:0"><h2>' + esc(title) + '</h2><div class="sub">' + esc(sub) + '</div></div></div>';
     h += '<button type="button" class="primary' + (visited ? ' done' : '') + '" id="scratchBtn" style="--ring:' + ring(ctx.a2) + '"' + (implied ? ' disabled' : '') + '>' + (visited ? '✓ Scratched off' + (explicit ? ' (tap to undo)' : '') : 'Scratch off') + '</button>';
     if (implied) h += '<div class="note">Counted because of the cities you added below.</div>';
     if (visited) h += '<div class="row"><span class="lbl" style="width:70px">Trip date</span><input class="field" type="month" id="tripDate" value="' + esc(rec.date || '') + '"' + (implied ? ' disabled' : '') + '></div>';
@@ -781,7 +790,7 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
       var cfg = SUBDIV[ctx.a2];
       h += '<button type="button" class="secondary" id="subBtn">Open ' + cfg.label + ' map · ' + regionCount(ctx.a2) + ' of ' + cfg.total + '</button>';
     }
-    if (isRegion && mapMode === 'world') h += '<button type="button" class="secondary" id="zoomBtn">Zoom to ' + esc(c.name) + ' ' + SUBDIV[ctx.a2].label + ' map</button>';
+    if (isRegion && (mapMode === 'world' || document.getElementById('mapview').hidden)) h += '<button type="button" class="secondary" id="zoomBtn">Zoom to ' + esc(c.name) + ' ' + SUBDIV[ctx.a2].label + ' map</button>';
     h += '<div><div class="lbl" style="margin-bottom:6px">Cities · ' + cities.length + '</div><ul class="cities">';
     cities.forEach(function (x) {
       h += '<li data-id="' + x.id + '"><span class="cn">' + esc(x.name) + (!isRegion && x.region ? ' <span class="tag">' + esc(x.region) + '</span>' : '') + '</span><input type="month" data-date="' + x.id + '" value="' + esc(x.date || '') + '" aria-label="Trip date for ' + esc(x.name) + '"><button type="button" class="x" data-del="' + x.id + '" aria-label="Remove ' + esc(x.name) + '">×</button></li>';
@@ -800,7 +809,7 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
     var td = document.getElementById('tripDate');
     if (td) td.onchange = function () { explicit.date = td.value; save(); renderRows(); };
     var zb = document.getElementById('zoomBtn');
-    if (zb) zb.onclick = function () { var a = ctx.a2; closeSheet(); showSub(a); };
+    if (zb) zb.onclick = function () { var a = ctx.a2; closeSheet(); switchTab('mapview'); showSub(a); };
     var sub = document.getElementById('subBtn');
     if (sub) sub.onclick = function () { var a = ctx.a2; closeSheet(); switchTab('mapview'); showSub(a); };
     body.querySelectorAll('[data-del]').forEach(function (b) {
@@ -830,7 +839,24 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
     if (off.length) h += '<div class="divider">Still to scratch · ' + off.length + '</div>' + off.map(function (c) { return item(c, false); }).join('');
     if (!list.length) h = '<div class="note">No match.</div>';
     document.getElementById('flaggrid').innerHTML = h;
+    refreshStates();
   }
+  function refreshStates() {
+    var q = document.getElementById('qs').value.trim().toLowerCase(), h = '', any = false;
+    [['US', 'United States'], ['CA', 'Canada']].forEach(function (g) {
+      var a2 = g[0]; if (!subCache[a2]) return;
+      var list = subFeatures(a2).map(function (f) { return f.id; }).sort().filter(function (n) { return !q || n.toLowerCase().indexOf(q) > -1; });
+      var on = list.filter(function (n) { return regionVisited(a2, n); }), off = list.filter(function (n) { return !regionVisited(a2, n); });
+      function item(n, isOn) { return '<button type="button" class="flag' + (isOn ? ' on' : '') + '" data-a2="' + a2 + '" data-r="' + esc(n) + '" style="--ring:' + ring(a2) + '"><span class="disc"><img class="rf" loading="lazy" alt="" src="' + regionFlagUrl(a2, n) + '"></span><span class="nm">' + esc(n) + '</span></button>'; }
+      if (on.length) h += '<div class="divider">' + g[1] + ' · Visited · ' + on.length + '</div>' + on.map(function (n) { return item(n, true); }).join('');
+      if (off.length) h += '<div class="divider">' + g[1] + ' · Still to scratch · ' + off.length + '</div>' + off.map(function (n) { return item(n, false); }).join('');
+      if (list.length) any = true;
+    });
+    document.getElementById('stategrid').innerHTML = any ? h : '<div class="note">No match.</div>';
+  }
+  function openRegionFromFlag(a2, name) { ctx = { kind: 'region', a2: a2, region: name, node: null }; renderSheet(); sheet.classList.add('open'); backdrop.classList.add('open'); }
+  document.getElementById('stategrid').addEventListener('click', function (e) { var b = e.target.closest('.flag'); if (b) openRegionFromFlag(b.dataset.a2, b.dataset.r); });
+  document.getElementById('qs').addEventListener('input', refreshStates);
   document.getElementById('flaggrid').addEventListener('click', function (e) { var b = e.target.closest('.flag'); if (b) openCountryFromFlag(b.dataset.a2); });
   document.getElementById('q').addEventListener('input', refreshFlags);
 
@@ -846,9 +872,10 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
 
   /* ---------- tabs ---------- */
   function switchTab(id) {
-    ['mapview', 'flagsview', 'dataview'].forEach(function (v) { document.getElementById(v).hidden = v !== id; });
+    ['mapview', 'flagsview', 'statesview', 'dataview'].forEach(function (v) { document.getElementById(v).hidden = v !== id; });
     document.querySelectorAll('nav button').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.tab === id ? 'true' : 'false'); });
     if (id === 'flagsview') refreshFlags();
+    if (id === 'statesview') refreshStates();
     if (id === 'dataview') renderRows();
     if (id === 'mapview') { if (mapMode === 'world') showWorld(); }
   }
