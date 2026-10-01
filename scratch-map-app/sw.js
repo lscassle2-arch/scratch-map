@@ -1,6 +1,8 @@
 // Scratch Map service worker: lets the app open with no signal.
-var CACHE = 'scratchmap-v3';
-var CORE = ['./', 'index.html', 'config.js', 'd3.min.js', 'topojson-client.min.js', 'manifest.webmanifest',
+// Bump the number in CACHE whenever you change any app file, so phones pick up the new version.
+var PREFIX = 'scratchmap2-';
+var CACHE = PREFIX + 'v2';
+var CORE = ['./', 'index.html', 'config.js', 'd3.min.js', 'topojson-client.min.js', 'supabase.min.js', 'privacy.html', 'manifest.webmanifest',
   'data/world.json', 'data/us.json', 'data/canada.json', 'data/countries.json', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', function (e) {
@@ -15,13 +17,14 @@ self.addEventListener('install', function (e) {
 
 self.addEventListener('activate', function (e) {
   e.waitUntil(caches.keys().then(function (keys) {
-    return Promise.all(keys.filter(function (k) { return k !== CACHE; }).map(function (k) { return caches.delete(k); }));
+    // Remove old versions of this app's cache, including the earlier Google Sheet version ("scratchmap-v3" and older).
+    return Promise.all(keys.filter(function (k) { return (k.indexOf(PREFIX) === 0 || k.indexOf('scratchmap-') === 0) && k !== CACHE; }).map(function (k) { return caches.delete(k); }));
   }).then(function () { return self.clients.claim(); }));
 });
 
 self.addEventListener('fetch', function (e) {
   var req = e.request, url = new URL(req.url);
-  if (req.method !== 'GET' || url.origin !== self.location.origin) return; // Sheet and fonts go straight to the network
+  if (req.method !== 'GET' || url.origin !== self.location.origin) return; // Supabase and fonts go straight to the network
   var cacheFirst = /\/(flags|data|icons)\//.test(url.pathname);
   if (cacheFirst) {
     e.respondWith(caches.match(req).then(function (hit) { return hit || fetch(req); }));
