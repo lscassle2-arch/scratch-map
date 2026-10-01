@@ -1,7 +1,7 @@
 // Scratch Map service worker: lets the app open with no signal.
 // Bump the number in CACHE whenever you change any app file, so phones pick up the new version.
 var PREFIX = 'scratchmap2-';
-var CACHE = PREFIX + 'v2';
+var CACHE = PREFIX + 'v3';
 var CORE = ['./', 'index.html', 'config.js', 'd3.min.js', 'topojson-client.min.js', 'supabase.min.js', 'privacy.html', 'manifest.webmanifest',
   'data/world.json', 'data/us.json', 'data/canada.json', 'data/countries.json', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 
