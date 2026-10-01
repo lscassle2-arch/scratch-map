@@ -1,7 +1,7 @@
 // Scratch Map service worker: lets the app open with no signal.
 // Bump the number in CACHE whenever you change any app file, so phones pick up the new version.
 var PREFIX = 'scratchmap2-';
-var CACHE = PREFIX + 'v3';
+var CACHE = PREFIX + 'v4';
 var CORE = ['./', 'index.html', 'config.js', 'd3.min.js', 'topojson-client.min.js', 'supabase.min.js', 'privacy.html', 'manifest.webmanifest',
   'data/world.json', 'data/us.json', 'data/canada.json', 'data/countries.json', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 
@@ -30,7 +30,8 @@ self.addEventListener('fetch', function (e) {
     e.respondWith(caches.match(req).then(function (hit) { return hit || fetch(req); }));
   } else {
     // App files: try the network so updates show up, fall back to the saved copy offline.
-    e.respondWith(fetch(req).then(function (res) {
+    // 'no-cache' makes the phone ask the server if the file changed, instead of trusting a copy GitHub said to keep for 10 minutes.
+    e.respondWith(fetch(req, { cache: 'no-cache' }).then(function (res) {
       var copy = res.clone(); caches.open(CACHE).then(function (c) { c.put(req, copy); }); return res;
     }).catch(function () { return caches.match(req, { ignoreSearch: true }).then(function (hit) { return hit || caches.match('index.html'); }); }));
   }

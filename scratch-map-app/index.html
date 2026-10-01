@@ -869,7 +869,14 @@ nav button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 
     window.addEventListener('online', function () { if (sync.dirty) push(); else if (!sync.loaded) initialSync(); });
     setInterval(function () { if (sync.dirty && !sync.inflight) push(); else if (!sync.loaded) initialSync(); }, 20000);
   }).catch(function (e) { document.getElementById('hint').textContent = 'Could not load map data.'; });
-  if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); }); }
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (reg) {
+        // Each time the app comes back to the front, check for a newer version of the app files.
+        document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') reg.update().catch(function () {}); });
+      }).catch(function () {});
+    });
+  }
 })();
 </script>
 
